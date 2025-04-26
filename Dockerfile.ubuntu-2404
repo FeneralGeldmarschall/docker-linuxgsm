@@ -4,7 +4,9 @@
 # https://github.com/GameServerManagers/docker-linuxgsm
 #
 
-FROM gameservermanagers/steamcmd:ubuntu-18.04
+FROM ghcr.io/gameservermanagers/steamcmd:ubuntu-24.04
+## Remove ubuntu user added in 24.04 by default
+RUN touch /var/mail/ubuntu && chown ubuntu /var/mail/ubuntu && userdel -r ubuntu
 
 LABEL maintainer="LinuxGSM <me@danielgibbs.co.uk>"
 ENV DEBIAN_FRONTEND noninteractive
@@ -16,8 +18,10 @@ ENV LGSM_LOGDIR=/data/log
 ENV LGSM_SERVERFILES=/data/serverfiles
 ENV LGSM_DATADIR=/data/data
 ENV LGSM_CONFIG=/data/config-lgsm
+ENV LGSM_DEV=false
 ENV GAMESERVER=jc2server
-ENV UPDATE_CHECK=1800
+ENV VALIDATE_ON_START=false
+ENV UPDATE_CHECK=60
 ENV USER=linuxgsm
 ENV UID=1000
 ENV GID=1000
@@ -43,13 +47,15 @@ RUN echo "**** Install Base LinuxGSM Requirements ****" \
   distro-info \
   file \
   git \
+  gnupg \
   gosu \
   gzip \
   hostname \
   jq \
-  lib32gcc1 \
+  lib32gcc-s1 \
   lib32stdc++6 \
-  netcat \
+  netcat-openbsd \
+  pigz \
   python3 \
   sudo \
   tar \
@@ -75,19 +81,20 @@ RUN echo "**** Install Node.js ****" \
   && set -uex \
   && mkdir -p /etc/apt/keyrings \
   && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-  && NODE_MAJOR=16 \
-  && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+  && NODE_MAJOR=20 \
+  && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
   && apt-get update \
   && apt-get install nodejs -y \
   && apt-get -y autoremove \
   && apt-get -y clean \
   && rm -rf /var/lib/apt/lists/* \
   && rm -rf /tmp/* \
-  && rm -rf /var/tmp/*
+  && rm -rf /var/tmp/* \
+  && npm install -g npm@latest
 
 # Install GameDig https://docs.linuxgsm.com/requirements/gamedig
 RUN echo "**** Install GameDig ****" \
-  && npm install -g gamedig
+  && npm install -g gamedig@5
 
 WORKDIR /app
 
@@ -130,6 +137,9 @@ RUN echo "$CACHEBUST"
 COPY entrypoint.sh /app/entrypoint.sh
 COPY entrypoint-user.sh /app/entrypoint-user.sh
 COPY entrypoint-healthcheck.sh /app/entrypoint-healthcheck.sh
+
+## Ensure entrypoint scripts have execute permissions
+RUN chmod +x /app/entrypoint.sh /app/entrypoint-user.sh /app/entrypoint-healthcheck.sh
 
 RUN date > /build-time.txt
 
